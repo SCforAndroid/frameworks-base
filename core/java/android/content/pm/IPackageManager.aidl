@@ -78,6 +78,11 @@ interface IPackageManager {
 
     ProviderInfo getProviderInfo(in ComponentName className, int flags, int userId);
 
+    boolean checkIntentPolicyForPackageName(in Intent intent,
+            in String destinationPackageName);
+    boolean checkIntentPolicyForUid(in Intent intent,
+            int destinationUid);
+
     int checkPermission(String permName, String pkgName);
     
     int checkUidPermission(String permName, int uid);

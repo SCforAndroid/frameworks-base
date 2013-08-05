@@ -24,7 +24,12 @@ import android.os.Parcelable;
 import android.util.Printer;
 
 import java.text.Collator;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 /**
  * Information you can retrieve about a particular application.  This
@@ -407,6 +412,15 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
     public String seinfo;
 
     /**
+     * The MMAC types assigned to the package containing this Application.
+     * Recommend that if this set is zero-sized, this value be set to
+     * Collections.emptySet().
+     *
+     * {@hide}
+     */
+    public Set<String> mmacTypes = Collections.emptySet();
+
+    /**
      * Paths to all shared libraries this application is linked against.  This
      * field is only set if the {@link PackageManager#GET_SHARED_LIBRARY_FILES
      * PackageManager.GET_SHARED_LIBRARY_FILES} flag was used when retrieving
@@ -489,6 +503,9 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
         if (seinfo != null) {
             pw.println(prefix + "seinfo=" + seinfo);
         }
+        if (mmacTypes != null) {
+            pw.println(prefix + "mmacTypes="+mmacTypes);
+        }
         pw.println(prefix + "dataDir=" + dataDir);
         if (sharedLibraryFiles != null) {
             pw.println(prefix + "sharedLibraryFiles=" + sharedLibraryFiles);
@@ -557,6 +574,7 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
         nativeLibraryDir = orig.nativeLibraryDir;
         resourceDirs = orig.resourceDirs;
         seinfo = orig.seinfo;
+        mmacTypes = orig.mmacTypes;
         sharedLibraryFiles = orig.sharedLibraryFiles;
         dataDir = orig.dataDir;
         uid = orig.uid;
@@ -597,6 +615,7 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
         dest.writeString(nativeLibraryDir);
         dest.writeStringArray(resourceDirs);
         dest.writeString(seinfo);
+        dest.writeStringList(new ArrayList<String>(mmacTypes));
         dest.writeStringArray(sharedLibraryFiles);
         dest.writeString(dataDir);
         dest.writeInt(uid);
@@ -622,6 +641,7 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
 
     private ApplicationInfo(Parcel source) {
         super(source);
+        List<String> tmpStrList = new ArrayList<String>();
         taskAffinity = source.readString();
         permission = source.readString();
         processName = source.readString();
@@ -636,6 +656,12 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
         nativeLibraryDir = source.readString();
         resourceDirs = source.readStringArray();
         seinfo = source.readString();
+        source.readStringList(tmpStrList);
+        if (tmpStrList.size() == 0) {
+            mmacTypes = Collections.emptySet();
+        } else {
+            mmacTypes = new HashSet<String>(tmpStrList);
+        }
         sharedLibraryFiles = source.readStringArray();
         dataDir = source.readString();
         uid = source.readInt();

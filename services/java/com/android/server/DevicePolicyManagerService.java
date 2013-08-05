@@ -41,6 +41,9 @@ import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.IntentMAC;
+import android.content.pm.IPackageManager;
+import android.content.pm.MMACtypes;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.IPackageManager;
 import android.content.pm.PackageInfo;
@@ -261,8 +264,13 @@ public class DevicePolicyManagerService extends IDevicePolicyManager.Stub {
 
         @Override
         boolean doPolicyReload() {
-            //policy is reloaded on reboot
-            return true;
+            boolean ret = true;
+            //mac_permissions.xml is reloaded on reboot
+            IntentMAC.getInstance().reloadPolicy();
+            ret = ret && IntentMAC.isPolicyLoaded();
+            MMACtypes.getInstance().reloadPolicy();
+            ret = ret && MMACtypes.getInstance().getPolicyLoaded();
+            return ret;
         }
     }
 
@@ -278,6 +286,10 @@ public class DevicePolicyManagerService extends IDevicePolicyManager.Stub {
 
     private static final String MMAC_POLICY_PATH = "/data/security/mac_permissions.xml";
 
+    private static final String INTENT_POLICY_PATH = "/data/security/intent_mac.xml";
+
+    private static final String MMAC_TYPES_PATH = "/data/security/mmac_types.xml";
+
     private static final PolicyFileDescription[] POLICY_DESCRIPTIONS = {
         // 0 = SEPOLICY_FILE_SEPOLICY
         new SELinuxPolicyDescription(SEPOLICY_PATH_SEPOLICY),
@@ -289,6 +301,10 @@ public class DevicePolicyManagerService extends IDevicePolicyManager.Stub {
         new SELinuxPolicyDescription(SEPOLICY_PATH_SEAPPCTXS),
         // 4 = MMAC_POLICY_FILE
         new MMACpolicyDescription(MMAC_POLICY_PATH),
+        // 5 = INTENT_POLICY_FILE
+        new MMACpolicyDescription(INTENT_POLICY_PATH),
+        // 6 = MMAC_TYPES_PATH
+        new MMACpolicyDescription(MMAC_TYPES_PATH),
     };
 
     static class ActiveAdmin {
@@ -525,6 +541,18 @@ public class DevicePolicyManagerService extends IDevicePolicyManager.Stub {
                     out.attribute(null, "value", Boolean.toString(isCustomMMAC));
                     out.endTag(null, "mmac-macperms");
                 }
+                boolean isCustomIntent = isCustomPolicyFile[DevicePolicyManager.INTENT_POLICY_FILE];
+                if (isCustomIntent) {
+                    out.startTag(null, "mmac-intentperms");
+                    out.attribute(null, "value", Boolean.toString(isCustomIntent));
+                    out.endTag(null, "mmac-intentperms");
+                }
+                boolean isCustomTypes = isCustomPolicyFile[DevicePolicyManager.MMAC_TYPES_FILE];
+                if (isCustomTypes) {
+                    out.startTag(null, "mmac-types");
+                    out.attribute(null, "value", Boolean.toString(isCustomTypes));
+                    out.endTag(null, "mmac-types");
+                }
             }
         }
 
@@ -630,7 +658,13 @@ public class DevicePolicyManagerService extends IDevicePolicyManager.Stub {
                     enforceMMAC = Boolean.parseBoolean(
                             parser.getAttributeValue(null, "value"));
                 } else if ("mmac-macperms".equals(tag)) {
-                    this.isCustomPolicyFile[DevicePolicyManager.MMAC_POLICY_FILE] =
+                    isCustomPolicyFile[DevicePolicyManager.MMAC_POLICY_FILE] =
+                            Boolean.parseBoolean(parser.getAttributeValue(null, "value"));
+                } else if ("mmac-intentperms".equals(tag)) {
+                    isCustomPolicyFile[DevicePolicyManager.INTENT_POLICY_FILE] =
+                            Boolean.parseBoolean(parser.getAttributeValue(null, "value"));
+                } else if ("mmac-types".equals(tag)) {
+                    isCustomPolicyFile[DevicePolicyManager.MMAC_TYPES_FILE] =
                             Boolean.parseBoolean(parser.getAttributeValue(null, "value"));
                 } else {
                     Slog.w(TAG, "Unknown admin tag: " + tag);
@@ -710,7 +744,10 @@ public class DevicePolicyManagerService extends IDevicePolicyManager.Stub {
                     pw.println(enforceMMAC);
             pw.print(prefix); pw.print("customMMACpolicy=");
                     pw.println(isCustomPolicyFile[DevicePolicyManager.MMAC_POLICY_FILE]);
-
+            pw.print(prefix); pw.print("customIntentPolicy=");
+                    pw.println(isCustomPolicyFile[DevicePolicyManager.INTENT_POLICY_FILE]);
+            pw.print(prefix); pw.print("customMMACtypes=");
+                    pw.println(isCustomPolicyFile[DevicePolicyManager.MMAC_TYPES_FILE]);
         }
     }
 
@@ -963,7 +1000,10 @@ public class DevicePolicyManagerService extends IDevicePolicyManager.Stub {
                                             admin.isCustomPolicyFile[DevicePolicyManager.SEPOLICY_FILE_SEAPPCTXS]);
                                 }
                                 if (doMMACcleanup) {
-                                    syncMMACpolicyLocked(policy, admin.isCustomPolicyFile[DevicePolicyManager.MMAC_POLICY_FILE]);
+                                    syncMMACpolicyLocked(policy,
+                                            admin.isCustomPolicyFile[DevicePolicyManager.MMAC_POLICY_FILE],
+                                            admin.isCustomPolicyFile[DevicePolicyManager.INTENT_POLICY_FILE],
+                                            admin.isCustomPolicyFile[DevicePolicyManager.MMAC_TYPES_FILE]);
                                 }
                                 saveSettingsLocked(userHandle);
                                 updateMaximumTimeToLockLocked(policy);
@@ -3083,8 +3123,17 @@ public class DevicePolicyManagerService extends IDevicePolicyManager.Stub {
     //                      FTT fails a
     //                           FTF fails a,b
 
-    private boolean syncMMACpolicyLocked(DevicePolicyData policy, boolean removePolicy) {
-        return syncMMACpolicyLocked(policy, removePolicy, false);
+    private boolean syncMMACpolicyLocked(DevicePolicyData policy, boolean removeAllMMACfiles) {
+        return syncMMACpolicyLocked(policy, removeAllMMACfiles, removeAllMMACfiles, removeAllMMACfiles, false);
+    }
+
+    private boolean syncMMACpolicyLocked(DevicePolicyData policy, boolean removeMMACpolicy,
+                                         boolean removeIntentPolicy, boolean removeMMACtypes) {
+        return syncMMACpolicyLocked(policy, removeMMACpolicy, removeIntentPolicy, removeMMACtypes, false);
+    }
+
+    private boolean syncMMACpolicyLocked(DevicePolicyData policy, boolean removeAllMMACfiles, boolean firstBoot) {
+        return syncMMACpolicyLocked(policy, removeAllMMACfiles, removeAllMMACfiles, removeAllMMACfiles, firstBoot);
     }
 
     /**
@@ -3093,7 +3142,8 @@ public class DevicePolicyManagerService extends IDevicePolicyManager.Stub {
      * and may remove the {@link MMAC_POLICY_PATH} file.
      * @return true if policies were synced successfully
      */
-    private boolean syncMMACpolicyLocked(DevicePolicyData policy, boolean removePolicy,
+    private boolean syncMMACpolicyLocked(DevicePolicyData policy, boolean removeMMACpolicy,
+                                         boolean removeIntentPolicy, boolean removeMMACtypes,
                                          boolean firstBoot) {
         if (policy.mUserHandle != UserHandle.USER_OWNER) {
             return false;
@@ -3114,10 +3164,29 @@ public class DevicePolicyManagerService extends IDevicePolicyManager.Stub {
         }
 
         boolean ret = true;
-        if (removePolicy) {
-            File polFile;
-            polFile = new File(MMAC_POLICY_PATH);
-            if (polFile.exists() && !polFile.delete()) {
+        if (removeMMACpolicy || removeIntentPolicy || removeMMACtypes) {
+            File polFile = new File(MMAC_POLICY_PATH);
+            if (removeMMACpolicy && polFile.exists() && !polFile.delete()) {
+                ret = false;
+            }
+
+            polFile = new File(INTENT_POLICY_PATH);
+            if (removeIntentPolicy && polFile.exists() && !polFile.delete()) {
+                ret = false;
+            }
+
+            IntentMAC.getInstance().reloadPolicy();
+            if (!IntentMAC.isPolicyLoaded()) {
+                ret = false;
+            }
+
+            polFile = new File(MMAC_TYPES_PATH);
+            if (removeMMACtypes && polFile.exists() && !polFile.delete()) {
+                ret = false;
+            }
+
+            MMACtypes.getInstance().reloadPolicy();
+            if (!MMACtypes.getInstance().getPolicyLoaded()) {
                 ret = false;
             }
         }
@@ -3190,14 +3259,18 @@ public class DevicePolicyManagerService extends IDevicePolicyManager.Stub {
             // Case TTT(F) = 1
             if (!control && curAdmin.equals(admin)) {
                 boolean setMMACpolicyFile = admin.isCustomPolicyFile[DevicePolicyManager.MMAC_POLICY_FILE];
+                boolean setIntentPolicyFile = admin.isCustomPolicyFile[DevicePolicyManager.INTENT_POLICY_FILE];
+                boolean setMMACtypesFile = admin.isCustomPolicyFile[DevicePolicyManager.MMAC_TYPES_FILE];
                 Slog.v(TAG, admin.info.getComponent() + " is no longer a SE Android MMAC admin");
 
                 admin.isMMACadmin = false;
                 admin.enforceMMAC = false;
                 admin.isCustomPolicyFile[DevicePolicyManager.MMAC_POLICY_FILE] = false;
+                admin.isCustomPolicyFile[DevicePolicyManager.INTENT_POLICY_FILE] = false;
+                admin.isCustomPolicyFile[DevicePolicyManager.MMAC_TYPES_FILE] = false;
 
                 saveSettingsLocked(userHandle);
-                syncMMACpolicyLocked(policy, setMMACpolicyFile);
+                syncMMACpolicyLocked(policy, setMMACpolicyFile, setIntentPolicyFile, setMMACtypesFile);
                 return true;
             }
         }

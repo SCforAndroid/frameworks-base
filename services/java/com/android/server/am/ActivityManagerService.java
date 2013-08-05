@@ -82,6 +82,7 @@ import android.content.pm.ConfigurationInfo;
 import android.content.pm.IPackageDataObserver;
 import android.content.pm.IPackageManager;
 import android.content.pm.InstrumentationInfo;
+import android.content.pm.IntentMAC;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.UserInfo;
@@ -3546,6 +3547,8 @@ public final class ActivityManagerService  extends ActivityManagerNative
                 Intent intent = new Intent(Intent.ACTION_PACKAGE_DATA_CLEARED,
                         Uri.fromParts("package", packageName, null));
                 intent.putExtra(Intent.EXTRA_UID, pkgUid);
+                intent.mCreatorPid = pid;
+                intent.mCreatorUid = uid;
                 broadcastIntentInPackage("android", Process.SYSTEM_UID, intent,
                         null, null, 0, null, null, null, false, false, userId);
             } catch (RemoteException e) {
@@ -11196,8 +11199,17 @@ public final class ActivityManagerService  extends ActivityManagerNative
         synchronized(this) {
             final int callingPid = Binder.getCallingPid();
             final int callingUid = Binder.getCallingUid();
+            //final int origCallingUid = Binder.getOrigCallingUid();
             checkValidCaller(callingUid, userId);
             final long origId = Binder.clearCallingIdentity();
+            if (IntentMAC.DEBUG_SERVICES) {
+                Slog.v("SELINUX_MMAC_SERVICES", "startService"
+                        + " intent="+service
+                        + " threadId="+Process.myTid()
+                        + " callingPid="+callingPid
+                        + " callingUid="+callingUid);
+                        //+ " origCallingUid="+origCallingUid);
+            }
             ComponentName res = mServices.startServiceLocked(caller, service,
                     resolvedType, callingPid, callingUid, userId);
             Binder.restoreCallingIdentity(origId);
@@ -11654,7 +11666,7 @@ public final class ActivityManagerService  extends ActivityManagerNative
                     + ": " + sticky);
 
             if (receiver == null) {
-                return sticky;
+                return checkIntentPolicyForUid(sticky, callingUid) ? sticky : null;
             }
 
             ReceiverList rl
@@ -11668,7 +11680,7 @@ public final class ActivityManagerService  extends ActivityManagerNative
                     try {
                         receiver.asBinder().linkToDeath(rl, 0);
                     } catch (RemoteException e) {
-                        return sticky;
+                        return checkIntentPolicyForUid(sticky, callingUid) ? sticky : null;
                     }
                     rl.linkedToDeath = true;
                 }
@@ -11703,6 +11715,10 @@ public final class ActivityManagerService  extends ActivityManagerNative
                 int N = allSticky.size();
                 for (int i=0; i<N; i++) {
                     Intent intent = (Intent)allSticky.get(i);
+
+                    // filter on receivers (sticky)
+                    filterBroadcastFilterReceivers(intent, receivers);
+
                     BroadcastQueue queue = broadcastQueueForIntent(intent);
                     BroadcastRecord r = new BroadcastRecord(queue, intent, null,
                             null, -1, -1, null, AppOpsManager.OP_NONE, receivers, null, 0,
@@ -11712,7 +11728,7 @@ public final class ActivityManagerService  extends ActivityManagerNative
                 }
             }
 
-            return sticky;
+            return checkIntentPolicyForUid(sticky, callingUid) ? sticky : null;
         }
     }
 
@@ -11850,6 +11866,51 @@ public final class ActivityManagerService  extends ActivityManagerNative
             // pm is in same process, this will never happen.
         }
         return receivers;
+    }
+
+    // filter on registered receivers (non-ordered)
+    private void filterBroadcastFilterReceivers(Intent intent, List<BroadcastFilter> receivers) {
+        // quick fail checks
+        if (receivers == null || receivers.size() == 0) {
+            return;
+        }
+
+        Iterator<BroadcastFilter> iter = receivers.iterator();
+        destination_loop:
+            while (iter.hasNext()) {
+                BroadcastFilter bf = iter.next();
+                ReceiverList  rl   = bf.receiverList;
+                ProcessRecord pr   = rl.app;
+                HashSet<String> dstPkgNames = pr.pkgList;
+
+                try {
+                    for (String dstPkgName : dstPkgNames) {
+                        if (AppGlobals.getPackageManager().checkIntentPolicyForPackageName(
+                                intent, dstPkgName)) {
+                            // These apps are running in the same process, so we assume
+                            // they are at least same-uid.
+                            // Since same-uid apps can ptrace_attach to each other
+                            // we only require at least one of the apps to have a
+                            // type that matches an allow rule.
+                            continue destination_loop;
+                        }
+                    }
+                } catch (RemoteException e) {
+                    Slog.e("SELINUX_MMAC_BROADCASTS", "SHOULD NEVER HAPPEN", e);
+                    iter.remove();
+                }
+            }
+    }
+
+    private boolean checkIntentPolicyForUid(Intent intent, int destUid) {
+        if (intent == null)
+            return false;
+        try {
+            return AppGlobals.getPackageManager().checkIntentPolicyForUid(
+                    intent, destUid);
+        } catch (RemoteException e) {
+            return false;
+        }
     }
 
     private final int broadcastIntentLocked(ProcessRecord callerApp,
@@ -12118,6 +12179,18 @@ public final class ActivityManagerService  extends ActivityManagerNative
             registeredReceivers = mReceiverResolver.queryIntent(intent,
                     resolvedType, false, userId);
         }
+
+        // filter on registered receivers (non-ordered)
+        if (intent.mCreatorPid != callingPid || intent.mCreatorUid != callingUid) {
+            Slog.v("SELINUX_MMAC", "broadcastIntentLocked mismatch" +
+                    " intent="+intent+
+                    " mCreatorPid="+intent.mCreatorPid+
+                    " mCreatorUid="+intent.mCreatorUid+
+                    " callingPid="+callingPid+
+                    " callingUid="+callingUid,
+                    new Exception("GIMME_A_TRACE"));
+        }
+        filterBroadcastFilterReceivers(intent, registeredReceivers);
 
         final boolean replacePending =
                 (intent.getFlags()&Intent.FLAG_RECEIVER_REPLACE_PENDING) != 0;

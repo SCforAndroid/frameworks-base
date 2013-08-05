@@ -70,6 +70,8 @@ import android.content.pm.IPackageManager;
 import android.content.pm.IPackageMoveObserver;
 import android.content.pm.IPackageStatsObserver;
 import android.content.pm.InstrumentationInfo;
+import android.content.pm.IntentMAC;
+import android.content.pm.MMACtypes;
 import android.content.pm.PackageCleanItem;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageInfoLite;
@@ -178,7 +180,7 @@ public class PackageManagerService extends IPackageManager.Stub {
     static final boolean DEBUG_PREFERRED = false;
     static final boolean DEBUG_UPGRADE = false;
     private static final boolean DEBUG_INSTALL = false;
-    private static final boolean DEBUG_POLICY = true;
+    private static final boolean DEBUG_POLICY = false;
     private static final boolean DEBUG_POLICY_INSTALL = DEBUG_POLICY || false;
     private static final boolean DEBUG_REMOVE = false;
     private static final boolean DEBUG_BROADCASTS = false;
@@ -371,6 +373,10 @@ public class PackageManagerService extends IPackageManager.Stub {
 
     // If mac_permissions.xml was found for seinfo labeling.
     boolean mFoundPolicyFile;
+
+    private boolean mEnableIntentPolicy = false;
+
+    private boolean mEnableMMACtypes = false;
 
     // All available activities, for your resolving pleasure.
     final ActivityIntentResolver mActivities =
@@ -1238,6 +1244,21 @@ public class PackageManagerService extends IPackageManager.Stub {
                 }
             }
 
+            long startPolicyTime = SystemClock.uptimeMillis();
+            mEnableMMACtypes = MMACtypes.getInstance().getPolicyLoaded();
+            if (mEnableMMACtypes) {
+                Slog.i(TAG, "Time to scan Intent MMAC policy: "
+                        + ((SystemClock.uptimeMillis()-startPolicyTime)/1000f)
+                        + " seconds");
+            }
+            startPolicyTime = SystemClock.uptimeMillis();
+            mEnableIntentPolicy = IntentMAC.isPolicyLoaded();
+            if (mEnableIntentPolicy) {
+                Slog.i(TAG, "Time to scan Intent MMAC policy: "
+                        + ((SystemClock.uptimeMillis()-startPolicyTime)/1000f)
+                        + " seconds");
+            }
+
             // Find base frameworks (resource packages without code).
             mFrameworkInstallObserver = new AppDirObserver(
                 mFrameworkDir.getPath(), OBSERVER_EVENTS, true);
@@ -1741,6 +1762,27 @@ public class PackageManagerService extends IPackageManager.Stub {
             }
         }
         return null;
+    }
+
+    //XXX Meant to be an internal call
+    public List<String> getMMACtypesForPackage(String packageName) {
+        if (!mEnableMMACtypes) {
+            return null;
+        }
+        //This will force the internal-ness, but forces callers to do a
+        //Binder.clearCallingIdentity before and Binder.restoreCallingIdentity after
+        //For now, lets just hide it.
+        //if (Binder.getCallingUid() != Process.SYSTEM_UID) { //less strong, DAC relationships
+        //if (Binder.getCallingPid() != Process.myPid()) {
+        //    throw new SecurityException("can only call from system");
+        //}
+        synchronized (mPackages) {
+            PackageParser.Package p = mPackages.get(packageName);
+            if (p == null) {
+                return null;
+            }
+            return new ArrayList<String>(p.applicationInfo.mmacTypes);
+        }
     }
 
     public String[] currentToCanonicalPackageNames(String[] names) {
@@ -2721,6 +2763,136 @@ public class PackageManagerService extends IPackageManager.Stub {
         return null;
     }
 
+    //XXX When do we need to lock mPackages? To be safe, force callers to lock
+    //    around the entire call.
+    private void filterResolveInfoListByPolicyLPr(Intent intent, List<ResolveInfo> list) {
+        // If there's no list to filter, do nothing
+        if (null == list || list.size() == 0) return;
+
+        Iterator<ResolveInfo> iter = list.iterator();
+        destination_loop:
+            while (iter.hasNext()) {
+                ResolveInfo ri = iter.next();
+                String dstPkgName;
+                if (null != ri.activityInfo) {
+                    dstPkgName = ri.activityInfo.packageName;
+                } else if (null != ri.serviceInfo) {
+                    dstPkgName = ri.serviceInfo.packageName;
+                } else { // This should never happen
+                    Slog.w(TAG, "Both serviceInfo and activityInfo were null??",
+                            new Exception("SELINUX_MMAC"));
+                    iter.remove();
+                    continue destination_loop;
+                }
+
+                if (checkIntentPolicyForPackageName(intent, dstPkgName)) {
+                    continue destination_loop;
+                }
+
+                iter.remove();
+            }
+    }
+
+    public boolean checkIntentPolicyForPackageName(Intent intent, String destinationPackageName) {
+        //TODO Protect from public callers
+        synchronized (mPackages) {
+            PackageParser.Package dstPkg = mPackages.get(destinationPackageName);
+            return checkIntentPolicyForPackage(intent, dstPkg);
+            //XXX Maybe this should call into checkIntentPolicyForUid()
+        }
+    }
+
+    public boolean checkIntentPolicyForUid(Intent intent, int destinationUid) {
+        //TODO Protect from public callers
+        synchronized (mPackages) {
+            String[] dstPkgNames = getPackagesForUid(destinationUid);
+            if (null == dstPkgNames || 0 == dstPkgNames.length) {
+                // No packages associated with source of ICC. Do the safe thing.
+                return false;
+            }
+
+            for (String dstPkgName : dstPkgNames) {
+                PackageParser.Package dstPkg = mPackages.get(dstPkgName);
+                if (checkIntentPolicyForPackage(intent, dstPkg) == true) {
+                    // Since same-uid apps can ptrace_attach to each other
+                    // we only require at least one of the apps to have a
+                    // type that matches an allow rule.
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
+    private boolean checkIntentPolicyForPackage(Intent intent, PackageParser.Package dstPkg) {
+        if (IntentMAC.DEBUG_ICC) {
+            Slog.v("SELINUX_MMAC", "FILTER intent="+intent
+                    + " intent.creatorPid="+intent.mCreatorPid
+                    + " intent.creatorUid="+intent.mCreatorUid
+                    + " dstPkg="+dstPkg.packageName);
+            if (intent.mCreatorPid <= 0) {
+                //If callingPid is -1, this likely was called by
+                //broadcastIntentInPackage() or closeSystemDialogsLocked()
+                Slog.w(TAG, "What?? uid=" + intent.mCreatorUid, new Exception("GIMME_A_TRACE"));
+            } else if (intent.mCreatorPid == Process.myPid() ||
+                    intent.mCreatorUid == Process.SYSTEM_UID) {
+                Slog.w(TAG, "system_server possibly created an intent on behalf of someone",
+                        new Exception("GIMME_A_TRACE"));
+            } else if (IntentMAC.DEBUG_ICC_TRACE) {
+                Slog.v("SELINUX_MMAC", "", new Exception("GIMME_A_TRACE"));
+            }
+        }
+
+        // If there's no policy in play, do nothing
+        if (!IntentMAC.isPolicyLoaded()) return true;
+
+        if (IntentMAC.checkAllowAllBooleans(intent)) return true;
+
+        // Figure out what packages (and package types) sent this intent
+        // If we can't find any, nobody receives the intent.
+        String[] callingPkgNames = getPackagesForUid(intent.mCreatorUid);
+        if (null == callingPkgNames || 0 == callingPkgNames.length) {
+            // No packages associated with source of ICC. Do the safe thing.
+            Set<String> noTypes = new HashSet<String>(1);
+            noTypes.add(null);
+            if (IntentMAC.checkIntentPolicy(intent, noTypes, noTypes)) {
+                return true;
+            }
+            return false;
+        }
+        List<PackageParser.Package> callingPkgs =
+                new ArrayList<PackageParser.Package>(callingPkgNames.length);
+        Set<String> callingTypes = new HashSet<String>();
+        for (String pkgName : callingPkgNames) {
+            PackageParser.Package pkg = mPackages.get(pkgName);
+            callingPkgs.add(pkg);
+            callingTypes.addAll(getMMACtypesForPackage(pkgName));
+        }
+
+        Set<String> dstTypes = dstPkg.applicationInfo.mmacTypes;
+
+        if (IntentMAC.DEBUG_ICC) {
+            Slog.v("SELINUX_MMAC", callingPkgs+"{"+callingTypes+"} => "+
+                    dstPkg+"{"+dstTypes+"}");
+        }
+        for (PackageParser.Package srcPkg : callingPkgs) {
+            if (IntentMAC.checkAllowPkgBooleans(intent, srcPkg, dstPkg) == true)
+                return true;
+        }
+        if (IntentMAC.checkIntentPolicy(intent, callingTypes, dstTypes)) {
+            return true;
+        }
+
+        Slog.e(TAG, IntentMAC.generateDenialString(intent,
+                intent.mCreatorPid, callingPkgs, callingTypes, dstPkg, dstTypes));
+        if (!IntentMAC.isEnforcing()) {
+            //permissive mode, don't remove this ResolveInfo from list
+            return true;
+        }
+        return false;
+    }
+
     @Override
     public List<ResolveInfo> queryIntentActivities(Intent intent,
             String resolvedType, int flags, int userId) {
@@ -2742,6 +2914,9 @@ public class PackageManagerService extends IPackageManager.Stub {
                 ri.activityInfo = ai;
                 list.add(ri);
             }
+            synchronized (mPackages) {
+                filterResolveInfoListByPolicyLPr(intent, list);
+            }
             return list;
         }
 
@@ -2749,10 +2924,12 @@ public class PackageManagerService extends IPackageManager.Stub {
         synchronized (mPackages) {
             final String pkgName = intent.getPackage();
             if (pkgName == null) {
-                return mActivities.queryIntent(intent, resolvedType, flags, userId);
+                final List<ResolveInfo> list = mActivities.queryIntent(intent, resolvedType, flags, userId);
+                filterResolveInfoListByPolicyLPr(intent, list);
+                return list;
             }
             final PackageParser.Package pkg = mPackages.get(pkgName);
-            if (pkg != null) {
+            if (pkg != null && checkIntentPolicyForPackage(intent, pkg)) {
                 return mActivities.queryIntentForPackage(intent, resolvedType, flags,
                         pkg.activities, userId);
             }
@@ -2945,12 +3122,15 @@ public class PackageManagerService extends IPackageManager.Stub {
             }
         }
         if (comp != null) {
-            List<ResolveInfo> list = new ArrayList<ResolveInfo>(1);
+            final List<ResolveInfo> list = new ArrayList<ResolveInfo>(1);
             ActivityInfo ai = getReceiverInfo(comp, flags, userId);
             if (ai != null) {
                 ResolveInfo ri = new ResolveInfo();
                 ri.activityInfo = ai;
                 list.add(ri);
+            }
+            synchronized (mPackages) {
+                filterResolveInfoListByPolicyLPr(intent, list);
             }
             return list;
         }
@@ -2959,10 +3139,13 @@ public class PackageManagerService extends IPackageManager.Stub {
         synchronized (mPackages) {
             String pkgName = intent.getPackage();
             if (pkgName == null) {
-                return mReceivers.queryIntent(intent, resolvedType, flags, userId);
+                final List<ResolveInfo> list = mReceivers.queryIntent(intent, resolvedType, flags,
+                        userId);
+                filterResolveInfoListByPolicyLPr(intent, list);
+                return list;
             }
             final PackageParser.Package pkg = mPackages.get(pkgName);
-            if (pkg != null) {
+            if (pkg != null && checkIntentPolicyForPackage(intent, pkg)) {
                 return mReceivers.queryIntentForPackage(intent, resolvedType, flags, pkg.receivers,
                         userId);
             }
@@ -3003,6 +3186,9 @@ public class PackageManagerService extends IPackageManager.Stub {
                 ri.serviceInfo = si;
                 list.add(ri);
             }
+            synchronized (mPackages) {
+                filterResolveInfoListByPolicyLPr(intent, list);
+            }
             return list;
         }
 
@@ -3010,10 +3196,12 @@ public class PackageManagerService extends IPackageManager.Stub {
         synchronized (mPackages) {
             String pkgName = intent.getPackage();
             if (pkgName == null) {
-                return mServices.queryIntent(intent, resolvedType, flags, userId);
+                final List<ResolveInfo> list = mServices.queryIntent(intent, resolvedType, flags, userId);
+                filterResolveInfoListByPolicyLPr(intent, list);
+                return list;
             }
             final PackageParser.Package pkg = mPackages.get(pkgName);
-            if (pkg != null) {
+            if (pkg != null && checkIntentPolicyForPackage(intent, pkg)) {
                 return mServices.queryIntentForPackage(intent, resolvedType, flags, pkg.services,
                         userId);
             }
@@ -3964,6 +4152,14 @@ public class PackageManagerService extends IPackageManager.Stub {
             return null;
         }
         mScanningPath = scanFile;
+
+        if (mEnableMMACtypes) {
+            Set<String> types = MMACtypes.getInstance().getTypes(pkg);
+            if (types.size() > 0) {
+                pkg.applicationInfo.mmacTypes = types;
+            }
+            Slog.d(TAG, "Package " + pkg.packageName + " has MMAC types " + pkg.applicationInfo.mmacTypes);
+        }
 
         if ((parseFlags&PackageParser.PARSE_IS_SYSTEM) != 0) {
             pkg.applicationInfo.flags |= ApplicationInfo.FLAG_SYSTEM;

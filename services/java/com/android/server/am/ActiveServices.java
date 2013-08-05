@@ -711,13 +711,44 @@ public class ActiveServices {
 
         if (service.getComponent() != null) {
             r = mServiceMap.getServiceByName(service.getComponent(), userId);
+            if (r != null) {
+                try {
+                    if (!AppGlobals.getPackageManager().checkIntentPolicyForPackageName(
+                            service, r.packageName)) {
+                        r = null;
+                    }
+                } catch (RemoteException e) {
+                    Slog.e(TAG, "This should never happen", e);
+                    r = null;
+                }
+            }
         }
         if (r == null) {
             Intent.FilterComparison filter = new Intent.FilterComparison(service);
             r = mServiceMap.getServiceByIntent(filter, userId);
+            if (r != null) {
+                try {
+                    if (!AppGlobals.getPackageManager().checkIntentPolicyForPackageName(
+                            service, r.packageName)) {
+                        r = null;
+                    }
+                } catch (RemoteException e) {
+                    Slog.e(TAG, "This should never happen", e);
+                    r = null;
+                }
+            }
         }
         if (r == null) {
             try {
+                if (service.mCreatorPid != callingPid || service.mCreatorUid != callingUid) {
+                    Slog.v("SELINUX_MMAC", "retrieveServiceLocked mismatch " +
+                            " intent="+service+
+                            " mCreatorPid="+service.mCreatorPid+
+                            " mCreatorUid="+service.mCreatorUid+
+                            " callingPid="+callingPid+
+                            " callingUid="+callingUid,
+                            new Exception("GIMME_A_TRACE"));
+                }
                 ResolveInfo rInfo =
                     AppGlobals.getPackageManager().resolveService(
                                 service, resolvedType,

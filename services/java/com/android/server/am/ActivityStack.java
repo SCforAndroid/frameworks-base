@@ -3126,6 +3126,16 @@ final class ActivityStack {
             } else {
                 callingPid = callingUid = -1;
             }
+
+            if (intent.mCreatorPid != callingPid || intent.mCreatorUid != callingUid) {
+                Slog.v("SELINUX_MMAC", "startAcitivityMayWait mismatch" +
+                        " intent="+intent+
+                        " mCreatorPid="+intent.mCreatorPid+
+                        " mCreatorUid="+intent.mCreatorUid+
+                        " callingPid="+callingPid+
+                        " callingUid="+callingUid,
+                        new Exception("GIMME_A_TRACE"));
+            }
             
             mConfigWillChange = config != null
                     && mService.mConfiguration.diff(config) != 0;

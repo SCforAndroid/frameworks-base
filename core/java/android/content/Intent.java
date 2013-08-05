@@ -28,10 +28,12 @@ import android.content.res.Resources;
 import android.content.res.TypedArray;
 import android.graphics.Rect;
 import android.net.Uri;
+import android.os.Binder;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.os.Parcel;
 import android.os.Parcelable;
+import android.os.Process;
 import android.os.StrictMode;
 import android.util.AttributeSet;
 import android.util.Log;
@@ -3548,6 +3550,13 @@ public class Intent implements Parcelable, Cloneable {
     private Intent mSelector;
     private ClipData mClipData;
 
+    /** Meant only for consumption by system_server
+     * @hide */
+    public int mCreatorPid = Process.myPid();
+    /** Meant only for consumption by system_server
+     * @hide */
+    public int mCreatorUid = Process.myUid();
+
     // ---------------------------------------------------------------------
 
     /**
@@ -3581,6 +3590,8 @@ public class Intent implements Parcelable, Cloneable {
         if (o.mClipData != null) {
             this.mClipData = new ClipData(o.mClipData);
         }
+        this.mCreatorPid = o.mCreatorPid;
+        this.mCreatorUid = o.mCreatorUid;
     }
 
     @Override
@@ -3597,6 +3608,8 @@ public class Intent implements Parcelable, Cloneable {
         if (o.mCategories != null) {
             this.mCategories = new HashSet<String>(o.mCategories);
         }
+        this.mCreatorPid = o.mCreatorPid;
+        this.mCreatorUid = o.mCreatorUid;
     }
 
     /**
@@ -6878,6 +6891,9 @@ public class Intent implements Parcelable, Cloneable {
         }
 
         mExtras = in.readBundle();
+
+        mCreatorUid = Binder.getCallingUid();
+        mCreatorPid = Binder.getCallingPid();
     }
 
     /**

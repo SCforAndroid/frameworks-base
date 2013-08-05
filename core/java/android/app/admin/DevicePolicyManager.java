@@ -1763,7 +1763,10 @@ public class DevicePolicyManager {
     public static final int SEPOLICY_FILE_FILECTXS = 2;
     public static final int SEPOLICY_FILE_SEAPPCTXS = 3;
     public static final int MMAC_POLICY_FILE = 4;
-    public static final int SEPOLICY_FILE_COUNT = MMAC_POLICY_FILE+1;
+    public static final int INTENT_POLICY_FILE = 5;
+    public static final int MMAC_TYPES_FILE = 6;
+    //TODO unify names
+    public static final int SEPOLICY_FILE_COUNT = MMAC_TYPES_FILE+1;
 
     /**
      * Sets a new policy file and reloads it at the proper time.
