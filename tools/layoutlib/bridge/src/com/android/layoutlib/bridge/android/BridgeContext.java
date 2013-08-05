@@ -894,6 +894,12 @@ public final class BridgeContext extends Context {
     }
 
     @Override
+    public boolean checkPolicy(int arg0, String arg1, int arg2) {
+        // pass
+        return true;
+    }
+
+    @Override
     public int checkUriPermission(Uri arg0, int arg1, int arg2, int arg3) {
         // pass
         return 0;

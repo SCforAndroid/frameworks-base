@@ -412,6 +412,15 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
     public String seinfo;
 
     /**
+     * A string retrieved from the value attribute of the cpMac tag found
+     * in policy. This value may be useful in setting a SEAndroid type
+     * of a package.
+     *
+     * {@hide}
+     */
+    public String cpMac;
+
+    /**
      * The MMAC types assigned to the package containing this Application.
      * Recommend that if this set is zero-sized, this value be set to
      * Collections.emptySet().
@@ -503,6 +512,9 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
         if (seinfo != null) {
             pw.println(prefix + "seinfo=" + seinfo);
         }
+        if (cpMac != null) {
+            pw.println(prefix + "cpMac=" + cpMac);
+        }
         if (mmacTypes != null) {
             pw.println(prefix + "mmacTypes="+mmacTypes);
         }
@@ -574,6 +586,7 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
         nativeLibraryDir = orig.nativeLibraryDir;
         resourceDirs = orig.resourceDirs;
         seinfo = orig.seinfo;
+        cpMac = orig.cpMac;
         mmacTypes = orig.mmacTypes;
         sharedLibraryFiles = orig.sharedLibraryFiles;
         dataDir = orig.dataDir;
@@ -615,6 +628,7 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
         dest.writeString(nativeLibraryDir);
         dest.writeStringArray(resourceDirs);
         dest.writeString(seinfo);
+        dest.writeString(cpMac);
         dest.writeStringList(new ArrayList<String>(mmacTypes));
         dest.writeStringArray(sharedLibraryFiles);
         dest.writeString(dataDir);
@@ -656,6 +670,7 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
         nativeLibraryDir = source.readString();
         resourceDirs = source.readStringArray();
         seinfo = source.readString();
+        cpMac = source.readString();
         source.readStringList(tmpStrList);
         if (tmpStrList.size() == 0) {
             mmacTypes = Collections.emptySet();

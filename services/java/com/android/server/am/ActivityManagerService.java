@@ -928,6 +928,7 @@ public final class ActivityManagerService  extends ActivityManagerNative
     static final int CONTINUE_USER_SWITCH_MSG = 35;
     static final int USER_SWITCH_TIMEOUT_MSG = 36;
     static final int IMMERSIVE_MODE_LOCK_MSG = 37;
+    static final int SHOW_SECURITY_VIOLATION_MSG = 38;
 
     static final int FIRST_ACTIVITY_STACK_MSG = 100;
     static final int FIRST_BROADCAST_QUEUE_MSG = 200;
@@ -1043,6 +1044,18 @@ public final class ActivityManagerService  extends ActivityManagerNative
                         // The device is asleep, so just pretend that the user
                         // saw a crash dialog and hit "force quit".
                         res.set(0);
+                    }
+                }
+                ensureBootCompleted();
+            } break;
+            case SHOW_SECURITY_VIOLATION_MSG: {
+                HashMap<String, Object> data = (HashMap<String, Object>) msg.obj;
+                synchronized (ActivityManagerService.this) {
+                    String message = (String) data.get("info");
+                    if (mShowDialogs && !mSleeping && !mShuttingDown) {
+                        Dialog d = new SecurityDialog(ActivityManagerService.this,
+                                                      mContext, message, true);
+                        d.show();
                     }
                 }
                 ensureBootCompleted();
@@ -5004,12 +5017,58 @@ public final class ActivityManagerService  extends ActivityManagerNative
     }
 
     /**
+     * As the only public entry point for policy checking.
+     *
+     * This can be called with or without the global lock held.
+     * {@hide}
+     */
+    public int checkPolicy(int callerUid, String destAuth, int access) {
+
+        boolean decision = false;
+        PackageManager pm = mSelf.mContext.getPackageManager();
+        ProviderInfo destProvInfo = pm.resolveContentProvider(destAuth, 0);
+
+        String[] srcPackageNames = pm.getPackagesForUid(callerUid);
+        for (String srcPkgName : srcPackageNames) {
+            ApplicationInfo srcAppInfo = null;
+            try {
+                srcAppInfo = pm.getApplicationInfo(srcPkgName, 0);
+            } catch (java.lang.Exception e) {
+                System.out.println("exception");
+            }
+
+            if (srcAppInfo == null) {
+                continue;
+            }
+
+            decision = pm.checkPolicy(srcAppInfo, destProvInfo, access);
+            if (decision == false) {
+                /*
+                // just show USE for now.
+                if (accessEnum == ContentSecurityManager.Access.USE) {
+                    Message msg = Message.obtain();
+                    msg.what = SHOW_SECURITY_VIOLATION_MSG;
+                    HashMap<String, Object> data = new HashMap<String, Object>();
+                    String info = "callerUid=" + Integer.toString(callerUid) +
+                        ", destAuth=" + destAuth + ", access=" + accessEnum;
+                    data.put("info", info);
+                    msg.obj = data;
+                    mHandler.sendMessage(msg);
+                }
+                */
+                return PackageManager.PERMISSION_DENIED;
+            }
+        }
+        return PackageManager.PERMISSION_GRANTED;
+    }
+
+    /**
      * As the only public entry point for permissions checking, this method
      * can enforce the semantic that requesting a check on a null global
      * permission is automatically denied.  (Internally a null permission
      * string is used when calling {@link #checkComponentPermission} in cases
      * when only uid-based security is needed.)
-     * 
+     *
      * This can be called with or without the global lock held.
      */
     public int checkPermission(String permission, int pid, int uid) {
@@ -6482,11 +6541,24 @@ public final class ActivityManagerService  extends ActivityManagerNative
         return false;
     }
 
+
+    private void logDeniedAccess(int callerUid, int callerPid, String name, int access) {
+        String srcUid = Integer.toString(callerUid);
+        Slog.d(TAG, "Denied USE permission between caller=" + callerPid +
+               " and content authority=" + name);
+        if (SystemProperties.getBoolean("persist.mmac.enforce", false)) {
+            throw new SecurityException("MMAC Permission Denial: use content provider=" +
+                                        name + " from uid=" + srcUid);
+        }
+    }
+
     private final ContentProviderHolder getContentProviderImpl(IApplicationThread caller,
             String name, IBinder token, boolean stable, int userId) {
         ContentProviderRecord cpr;
         ContentProviderConnection conn = null;
         ProviderInfo cpi = null;
+        int callerUid = Binder.getCallingUid();
+        int callerPid = Binder.getCallingPid();
 
         synchronized(this) {
             ProcessRecord r = null;
@@ -6519,6 +6591,9 @@ public final class ActivityManagerService  extends ActivityManagerNative
                     // don't give caller the provider object, it needs
                     // to make its own.
                     holder.provider = null;
+                    if (checkPolicy(callerUid, name, 3) != 0) {
+                        logDeniedAccess(callerUid, callerPid, name, 3);
+                    }
                     return holder;
                 }
 
@@ -6587,7 +6662,7 @@ public final class ActivityManagerService  extends ActivityManagerNative
                     return null;
                 }
                 singleton = isSingleton(cpi.processName, cpi.applicationInfo,
-                        cpi.name, cpi.flags); 
+                        cpi.name, cpi.flags);
                 if (singleton) {
                     userId = 0;
                 }
@@ -6644,6 +6719,9 @@ public final class ActivityManagerService  extends ActivityManagerNative
                     // info and allow the caller to instantiate it.  Only do
                     // this if the provider is the same user as the caller's
                     // process, or can run as root (so can be in any process).
+                    if (checkPolicy(callerUid, name, 3) != 0) {
+                        logDeniedAccess(callerUid, callerPid, name, 3);
+                    }
                     return cpr.newHolder(null);
                 }
 
@@ -6742,6 +6820,9 @@ public final class ActivityManagerService  extends ActivityManagerNative
                     }
                 }
             }
+        }
+        if (checkPolicy(callerUid, name, 3) != 0) {
+            logDeniedAccess(callerUid, callerPid, name, 3);
         }
         return cpr != null ? cpr.newHolder(conn) : null;
     }

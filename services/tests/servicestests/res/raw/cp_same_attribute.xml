@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<policy>
+
+  <attributes>
+    <attribute name="attr0"/>
+       <type name="type0"/>
+    </attribute>
+
+    <attribute name="attr1"/>
+       <type name="type0"/>
+    </attribute>
+  </attributes>
+
+  <type name="test0">
+    <package value="com.android.frameworks.servicestests.cp_platform" />
+    <provider value="test"/>
+  </type>
+
+</policy>

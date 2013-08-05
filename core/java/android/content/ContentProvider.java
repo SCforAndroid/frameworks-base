@@ -20,6 +20,7 @@ import static android.content.pm.PackageManager.GET_PROVIDERS;
 import static android.content.pm.PackageManager.PERMISSION_GRANTED;
 
 import android.app.AppOpsManager;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.PathPermission;
 import android.content.pm.ProviderInfo;
@@ -37,6 +38,7 @@ import android.os.OperationCanceledException;
 import android.os.ParcelFileDescriptor;
 import android.os.Process;
 import android.os.RemoteException;
+import android.os.SystemProperties;
 import android.os.UserHandle;
 import android.util.Log;
 
@@ -327,6 +329,14 @@ public abstract class ContentProvider implements ComponentCallbacks2 {
                 return;
             }
 
+            // if seandroid is enabled, enforce policy check
+            String dstAuthority = uri.getEncodedAuthority();
+            if (! context.checkPolicy(uid, dstAuthority, 0) &&
+                SystemProperties.getBoolean("persist.mmac.enforce", false)) {
+                throw new SecurityException("MMAC Permission Denial: reading content provider=" +
+                                            uri + " from uid=" + uid);
+            }
+
             if (mExported) {
                 final String componentPerm = getReadPermission();
                 if (componentPerm != null) {
@@ -394,6 +404,14 @@ public abstract class ContentProvider implements ComponentCallbacks2 {
 
             if (UserHandle.isSameApp(uid, mMyUid)) {
                 return;
+            }
+
+            // if seandroid is enabled, enforce policy check
+            String dstAuthority = uri.getEncodedAuthority();
+            if (! context.checkPolicy(uid, dstAuthority, 1) &&
+                SystemProperties.getBoolean("persist.mmac.enforce", false)) {
+                throw new SecurityException("MMAC Permission Denial: writing content provider=" +
+                                            uri + " from uid=" + uid);
             }
 
             if (mExported) {

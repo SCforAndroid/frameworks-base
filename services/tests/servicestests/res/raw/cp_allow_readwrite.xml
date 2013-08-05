@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<policy>
+
+  <type name="type0" component="package">
+    <package value="com.android.frameworks.servicestests.cp_platform" />
+  </type>
+
+  <type name="type1">
+    <package value="com.android.frameworks.servicestests.cp_shared" />
+    <provider value="sharedProvider"/>
+  </type>
+
+  <allow-content>
+    <allow source="type0" destination="type1" permission="use;rw"/>
+  </allow-content>
+
+</policy>

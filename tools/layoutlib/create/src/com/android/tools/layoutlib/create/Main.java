@@ -104,6 +104,7 @@ public class Main {
                         "android.graphics.*",
                         "android.graphics.drawable.*",
                         "android.content.*",
+                        "android.content.pm.*",
                         "android.content.res.*",
                         "org.apache.harmony.xml.*",
                         "com.android.internal.R**",

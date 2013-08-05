@@ -96,6 +96,14 @@ public final class ProviderInfo extends ComponentInfo
     @Deprecated
     public boolean isSyncable = false;
 
+    /**
+     * The provider type assigned to this content provider found in policy.
+     * This value is useful in setting a SELinux security context on the provider.
+     * {@hide}
+     */
+    public String providerType = null;
+
+
     public ProviderInfo() {
     }
 
@@ -111,6 +119,7 @@ public final class ProviderInfo extends ComponentInfo
         initOrder = orig.initOrder;
         flags = orig.flags;
         isSyncable = orig.isSyncable;
+        providerType = orig.providerType;
     }
     
     public int describeContents() {
@@ -129,6 +138,7 @@ public final class ProviderInfo extends ComponentInfo
         out.writeInt(initOrder);
         out.writeInt(flags);
         out.writeInt(isSyncable ? 1 : 0);
+        out.writeString(providerType);
     }
 
     public static final Parcelable.Creator<ProviderInfo> CREATOR
@@ -158,5 +168,6 @@ public final class ProviderInfo extends ComponentInfo
         initOrder = in.readInt();
         flags = in.readInt();
         isSyncable = in.readInt() != 0;
+        providerType = in.readString();
     }
 }

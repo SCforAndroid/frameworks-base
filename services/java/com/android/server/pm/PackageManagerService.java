@@ -377,6 +377,7 @@ public class PackageManagerService extends IPackageManager.Stub {
     private boolean mEnableIntentPolicy = false;
 
     private boolean mEnableMMACtypes = false;
+    private boolean mEnableCPType = false;
 
     // All available activities, for your resolving pleasure.
     final ActivityIntentResolver mActivities =
@@ -1257,6 +1258,14 @@ public class PackageManagerService extends IPackageManager.Stub {
                 Slog.i(TAG, "Time to scan Intent MMAC policy: "
                         + ((SystemClock.uptimeMillis()-startPolicyTime)/1000f)
                         + " seconds");
+            }
+            startPolicyTime = SystemClock.uptimeMillis();
+            mEnableCPType =  ContentSecurityManager.getInstance().getPolicyLoaded();
+            if (mEnableCPType) {
+                Slog.i(TAG, "Time to scan CPMMAC policy: "
+                        + ((SystemClock.uptimeMillis()-startPolicyTime)/1000f)
+                        + " seconds");
+                Slog.d(TAG, ContentSecurityManager.getInstance().toString());
             }
 
             // Find base frameworks (resource packages without code).
@@ -2167,6 +2176,13 @@ public class PackageManagerService extends IPackageManager.Stub {
 
         throw new SecurityException("Caller uid=" + uid
                 + " is not privileged to communicate with user=" + userId);
+    }
+
+    public boolean checkPolicy(ApplicationInfo sourceApplication,
+                               ProviderInfo destinationProvider, int accessVal) {
+        return ContentSecurityManager.getInstance().checkPolicy(sourceApplication,
+                                                                destinationProvider,
+                                                                accessVal);
     }
 
     public int checkPermission(String permName, String pkgName) {
@@ -4159,6 +4175,10 @@ public class PackageManagerService extends IPackageManager.Stub {
                 pkg.applicationInfo.mmacTypes = types;
             }
             Slog.d(TAG, "Package " + pkg.packageName + " has MMAC types " + pkg.applicationInfo.mmacTypes);
+        }
+
+        if (mEnableCPType) {
+            ContentSecurityManager.getInstance().setTypes(pkg, mSettings);
         }
 
         if ((parseFlags&PackageParser.PARSE_IS_SYSTEM) != 0) {

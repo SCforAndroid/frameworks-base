@@ -16,7 +16,6 @@
 
 package com.android.server.pm;
 
-//import android.content.pm.PackageManagerTests;
 import android.content.pm.PackageParser;
 import android.content.res.Resources;
 import android.content.res.Resources.NotFoundException;

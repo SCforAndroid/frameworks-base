@@ -1842,6 +1842,17 @@ public abstract class ActivityManagerNative extends Binder implements IActivityM
             reply.writeLong(res);
             return true;
         }
+        case CHECK_POLICY_TRANSACTION: {
+            data.enforceInterface(IActivityManager.descriptor);
+
+            int callerUid = data.readInt();
+            String destAuth = data.readString();
+            int access = data.readInt();
+            int res = checkPolicy(callerUid, destAuth, access);
+            reply.writeNoException();
+            reply.writeInt(res);
+            return true;
+        }
 
         case GET_TOP_ACTIVITY_EXTRAS_TRANSACTION: {
             data.enforceInterface(IActivityManager.descriptor);
@@ -3161,6 +3172,20 @@ class ActivityManagerProxy implements IActivityManager
         data.writeInt(pid);
         data.writeInt(uid);
         mRemote.transact(CHECK_PERMISSION_TRANSACTION, data, reply, 0);
+        reply.readException();
+        int res = reply.readInt();
+        data.recycle();
+        reply.recycle();
+        return res;
+    }
+    public int checkPolicy(int callerUid, String destAuth, int access) throws RemoteException {
+        Parcel data = Parcel.obtain();
+        Parcel reply = Parcel.obtain();
+        data.writeInterfaceToken(IActivityManager.descriptor);
+        data.writeInt(callerUid);
+        data.writeString(destAuth);
+        data.writeInt(access);
+        mRemote.transact(CHECK_POLICY_TRANSACTION, data, reply, 0);
         reply.readException();
         int res = reply.readInt();
         data.recycle();

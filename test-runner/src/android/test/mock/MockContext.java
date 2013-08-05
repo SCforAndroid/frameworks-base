@@ -457,6 +457,12 @@ public class MockContext extends Context {
         throw new UnsupportedOperationException();
     }
 
+    /** @hide */
+    @Override
+    public boolean checkPolicy(int callingUid, String destAuth, int access) {
+        throw new UnsupportedOperationException();
+    }
+
     @Override
     public int checkCallingPermission(String permission) {
         throw new UnsupportedOperationException();

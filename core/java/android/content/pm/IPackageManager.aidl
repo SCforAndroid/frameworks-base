@@ -85,6 +85,9 @@ interface IPackageManager {
 
     int checkPermission(String permName, String pkgName);
     
+    boolean checkPolicy(in ApplicationInfo sourceApplication,
+                        in ProviderInfo destinationProvider, int accessVal);
+
     int checkUidPermission(String permName, int uid);
     
     boolean addPermission(in PermissionInfo info);

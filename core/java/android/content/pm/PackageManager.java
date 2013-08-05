@@ -1708,6 +1708,12 @@ public abstract class PackageManager {
     public abstract int checkPermission(String permName, String pkgName);
 
     /**
+     * @hide
+     */
+    public abstract boolean checkPolicy(ApplicationInfo sourceApplication,
+                                        ProviderInfo destinationProvider, int accessVal);
+
+    /**
      * Add a new dynamic permission to the system.  For this to work, your
      * package must have defined a permission tree through the
      * {@link android.R.styleable#AndroidManifestPermissionTree

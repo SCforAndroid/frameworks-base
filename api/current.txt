@@ -22608,6 +22608,7 @@ package android.test.mock {
     method public void addPreferredActivity(android.content.IntentFilter, int, android.content.ComponentName[], android.content.ComponentName);
     method public java.lang.String[] canonicalToCurrentPackageNames(java.lang.String[]);
     method public int checkPermission(java.lang.String, java.lang.String);
+    method public boolean checkPolicy(android.content.pm.ApplicationInfo, android.content.pm.ProviderInfo, int);
     method public int checkSignatures(java.lang.String, java.lang.String);
     method public int checkSignatures(int, int);
     method public void clearPackagePreferredActivities(java.lang.String);

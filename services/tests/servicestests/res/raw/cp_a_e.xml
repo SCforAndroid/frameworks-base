@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<policy>
+
+  <type name="test0">
+  </type>
+
+  <type name="test1">
+    <provider value="test"/>
+  </type>
+
+</policy>

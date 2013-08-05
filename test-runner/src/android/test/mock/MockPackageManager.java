@@ -164,6 +164,12 @@ public class MockPackageManager extends PackageManager {
     }
 
     @Override
+    public boolean checkPolicy(ApplicationInfo sourceApplication,
+                               ProviderInfo destinationProvider, int accessVal) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
     public boolean addPermission(PermissionInfo info) {
         throw new UnsupportedOperationException();
     }

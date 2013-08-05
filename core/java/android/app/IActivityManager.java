@@ -194,6 +194,8 @@ public interface IActivityManager extends IInterface {
     public int checkPermission(String permission, int pid, int uid)
             throws RemoteException;
 
+    public int checkPolicy(int callingUid, String destAuth, int access) throws RemoteException;
+
     public int checkUriPermission(Uri uri, int pid, int uid, int mode)
             throws RemoteException;
     public void grantUriPermission(IApplicationThread caller, String targetPkg,
@@ -641,4 +643,5 @@ public interface IActivityManager extends IInterface {
     int KILL_UID_TRANSACTION = IBinder.FIRST_CALL_TRANSACTION+164;
     int SET_USER_IS_MONKEY_TRANSACTION = IBinder.FIRST_CALL_TRANSACTION+165;
     int HANG_TRANSACTION = IBinder.FIRST_CALL_TRANSACTION+166;
+    int CHECK_POLICY_TRANSACTION = IBinder.FIRST_CALL_TRANSACTION+167;
 }

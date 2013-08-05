@@ -323,6 +323,16 @@ final class ApplicationPackageManager extends PackageManager {
     }
 
     @Override
+    public boolean checkPolicy(ApplicationInfo sourceApplication,
+                               ProviderInfo destinationProvider, int accessVal) {
+        try {
+            return mPM.checkPolicy(sourceApplication, destinationProvider, accessVal);
+        } catch (RemoteException e) {
+            throw new RuntimeException("Package manager has died", e);
+        }
+    }
+
+    @Override
     public boolean addPermission(PermissionInfo info) {
         try {
             return mPM.addPermission(info);

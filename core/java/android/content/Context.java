@@ -2302,6 +2302,19 @@ public abstract class Context {
     public abstract int checkPermission(String permission, int pid, int uid);
 
     /**
+     * @hide
+     * Determine whether the given source and destination exchange is
+     * allowed per a particular policy on the system.
+     *
+     * @param callerUid UID of the calling package.
+     * @param destAuth Authority of the destination Content Provider.
+     * @param access Enum that represents R, W, or RW
+     *
+     * @return Returns True if allowed by policy, False if not.
+    */
+    public abstract boolean checkPolicy(int callerUid, String destAuth, int access);
+
+    /**
      * Determine whether the calling process of an IPC you are handling has been
      * granted a particular permission.  This is basically the same as calling
      * {@link #checkPermission(String, int, int)} with the pid and uid returned

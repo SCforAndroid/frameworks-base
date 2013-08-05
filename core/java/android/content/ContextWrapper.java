@@ -524,6 +524,12 @@ public class ContextWrapper extends Context {
         return mBase.checkPermission(permission, pid, uid);
     }
 
+    /** @hide */
+    @Override
+    public boolean checkPolicy(int callerUid, String destAuth, int access) {
+        return mBase.checkPolicy(callerUid, destAuth, access);
+    }
+
     @Override
     public int checkCallingPermission(String permission) {
         return mBase.checkCallingPermission(permission);

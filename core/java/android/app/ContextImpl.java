@@ -1545,6 +1545,25 @@ class ContextImpl extends Context {
         }
     }
 
+    /** {@hide} */
+    @Override
+    public boolean checkPolicy(int callerUid, String destAuth, int access) {
+        if (callerUid < 0 || destAuth == null) {
+            throw new IllegalArgumentException("source or destination are invalid");
+        }
+
+        try {
+            if (ActivityManagerNative.getDefault().checkPolicy(
+                callerUid, destAuth, access) == 0) {
+                return true;
+            } else {
+                return false;
+            }
+        } catch (RemoteException e) {
+            return false;
+        }
+    }
+
     @Override
     public int checkCallingPermission(String permission) {
         if (permission == null) {
